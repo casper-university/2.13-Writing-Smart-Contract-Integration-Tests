@@ -8,13 +8,14 @@ compile_error!("target arch should be wasm32: compile with '--target wasm32-unkn
 // `no_std` environment.
 extern crate alloc;
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{ApiError, Key};
+use casper_types::{ApiError, Key, URef, CLType, EntryPoint, EntryPoints, EntryPointAccess, EntryPointType, contracts::NamedKeys};
 
 const KEY_NAME: &str = "my-key-name";
 const RUNTIME_ARG_NAME: &str = "message";
@@ -34,27 +35,36 @@ impl From<Error> for ApiError {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    // The key shouldn't already exist in the named keys.
-    let missing_key = runtime::get_key(KEY_NAME);
-    if missing_key.is_some() {
-        runtime::revert(Error::KeyAlreadyExists);
-    }
+    let count = storage::new_uref(0u32);
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::from("count_key"), count.into());
 
-    // This contract expects a single runtime argument to be provided.  The arg is named "message"
-    // and will be of type `String`.
-    let value: String = runtime::get_named_arg(RUNTIME_ARG_NAME);
+    let mut entry_points = EntryPoints::new();
 
-    // Store this value under a new unforgeable reference a.k.a `URef`.
-    let value_ref = storage::new_uref(value);
+    entry_points.add_entry_point(EntryPoint::new(
+	    "increment_count",
+	    Vec::new(),
+	    CLType::Unit,
+	    EntryPointAccess::Public,
+	    EntryPointType::Contract,
+    ));
 
-    // Store the new `URef` as a named key with a name of `KEY_NAME`.
-    let key = Key::URef(value_ref);
-    runtime::put_key(KEY_NAME, key);
+    let (contract_hash, contract_version) = storage::new_contract(
+	    entry_points,
+	    Some(named_keys),
+	    Some("counter_package".to_string()),
+	    Some("counter_access_uref".to_string()),
+    );
 
-    // The key should now be able to be retrieved.  Note that if `get_key()` returns `None`, then
-    // `unwrap_or_revert()` will exit the process, returning `ApiError::None`.
-    let retrieved_key = runtime::get_key(KEY_NAME).unwrap_or_revert();
-    if retrieved_key != key {
-        runtime::revert(Error::KeyMismatch);
-    }
+    runtime::put_key("counter_contract_hash", contract_hash.into());
+}
+
+#[no_mangle]
+pub extern "C" fn increment_count() {
+	let count_uref: URef = runtime::get_key("count_key")
+	.unwrap_or_revert()
+	.into_uref()
+	.unwrap_or_revert();
+
+    storage::add(count_uref, 1);
 }
