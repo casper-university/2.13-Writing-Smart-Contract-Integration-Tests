@@ -15,7 +15,10 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{ApiError, Key, URef, CLType, EntryPoint, EntryPoints, EntryPointAccess, EntryPointType, contracts::NamedKeys};
+use casper_types::{
+    contracts::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, URef,
+};
 
 const KEY_NAME: &str = "my-key-name";
 const RUNTIME_ARG_NAME: &str = "message";
@@ -42,18 +45,18 @@ pub extern "C" fn call() {
     let mut entry_points = EntryPoints::new();
 
     entry_points.add_entry_point(EntryPoint::new(
-	    "increment_count",
-	    Vec::new(),
-	    CLType::Unit,
-	    EntryPointAccess::Public,
-	    EntryPointType::Contract,
+        "increment_count",
+        Vec::new(),
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
     ));
 
     let (contract_hash, contract_version) = storage::new_contract(
-	    entry_points,
-	    Some(named_keys),
-	    Some("counter_package".to_string()),
-	    Some("counter_access_uref".to_string()),
+        entry_points,
+        Some(named_keys),
+        Some("counter_package".to_string()),
+        Some("counter_access_uref".to_string()),
     );
 
     runtime::put_key("counter_contract_hash", contract_hash.into());
@@ -61,10 +64,10 @@ pub extern "C" fn call() {
 
 #[no_mangle]
 pub extern "C" fn increment_count() {
-	let count_uref: URef = runtime::get_key("count_key")
-	.unwrap_or_revert()
-	.into_uref()
-	.unwrap_or_revert();
+    let count_uref: URef = runtime::get_key("count_key")
+        .unwrap_or_revert()
+        .into_uref()
+        .unwrap_or_revert();
 
     storage::add(count_uref, 1);
 }

@@ -1,223 +1,176 @@
-# Writing Smart Contracts in Rust
+# Writing Casper Smart Contract Integration Tests
 
-In today's lecture you'll be writing your first smart contract in Rust. There are multiple blockchain platforms that support Rust-based smart contracts, but we'll be using the Casper Network. Each platform has different standards for how smart contracts need to be written, and Casper is no different. Casper natively supports WebAssembly binaries, to which each Rust contract is compiled. While Casper smart contracts can be written in other languages, Rust is preferred due to its strict type safety and concision.
+Hi everyone I hope you're all having a good day. Thanks for joining me today as you'll learn to write integration tests to test smart contracts for the Casper Network without having to deploy them to the network itself. The tests that you will write will execute locally in a mock VM that adheres to the same rules that the full-fledged Casper networks do. This way, you can perform tests to ensure expected outcomes without needing to wait for deploys, specific blocks or conditions, and without needing to fund accounts. For today's example, we will use the "counter" smart contract that we built previously. Since we wrote this smart contract three weeks ago we will take a moment to go over the contract before we write the tests, but in essence, all it does is store a number and expose an entrypoint that increments it.
 
-The Casper Network developers have prepared libraries that make writing smart contracts on Casper easy.
-Today we'll take a look at how you can use Rust and these libraries to write your first smart contract.
+Begin by opening the counter smart contracts directory in an editor like VS Code. If you don't have the project on standby, you can clone it from its [git repository](https://github.com/casper-university/2.8-Writing-Smart-Contracts-In-Rust).
 
-Casper recommends using Linux to write and compile Casper compatible smart contracts. MacOS also works, but is not officially supported.
+Open */contract/src/main.rs*, this is the counter contract.
 
-Compiling Casper smart contracts requires the use of Rust and the Cargo package manager.
-Before installing these though, we need to install some dependencies.
+Take a look at the `call` function. It starts by defining a new value `0u32` at a newly generated URef, then inserts it into the contract's named keys under `"count_key"`. Next it adds the entrypoint `increment_count`, which is defined as a function below, then takes the entry points object along with the named keys and creates a new smart contract out of it.
 
-Use `apt` in Ubuntu to install the following packages
+The `storage::new_contract` function returns the contract hash, which we then store under `counter_contract_hash` within the deploying account's named keys.
 
-```bash
-sudo apt install curl build-essential pkg-config openssl libssl-dev
-```
+Now the next function represents the `increment_count` entrypoint. All this function does is acquire the `count` value from the contract's named key `"count_key"`, and directly increment the value by `1`.
 
-Then install cargo with
+Now that we've reviewed the counter contract we can begin writing tests for it. For such a simple smart contract such as this, testing on a testnet or NCTL would not really be a problem, but for more complex contracts, you may want to perform a series of tests that would be impractical to test repeatedly on a live network.
 
-```bash
-sudo apt install cargo
-```
+In the left side panel you'll notice a directory *tests/*. Expand this folder, then the *src/* folder, and open the *integration_tests.rs* file.
 
-To install Rust, run
+There are a few new concepts and Rust libraries we'll be exploring here, so bear with me.
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+On line 1 you'll see the Rust attribute `#[cfg(test)]`. This is a common attribute in Rust projects, and lets the compiler know that this module should only be compiled and run when we execute `cargo test` in the command line, and not while compiling debug or release versions of the project.
 
-Then restart the terminal to refresh your `PATH` environment variable 
+On line 2 a new module `tests` is defined. This is the module that the `#[cfg(test)]` attribute acts on. Everything within this module is related to our tests.
 
-Now that you have Rust and cargo installed, you can install the relevant Casper cargo crates.
-Casper has a command line tool for creating template contracts and associated tests, known as `cargo-casper`, install this tool by running:
+Line 3 contains an import of the `PathBuf` module, which we'll use to import the compiled WebAssembly smart contract from our local directory.
 
-```bash
-cargo install cargo-casper
-```
+Next, the `casper_engine_test_support` crate is imported. This, alongside the `casper_execution_engine` crate that we'll look at next, is an important create in testing Casper smart contracts. This crate provides an interface to write tests and interact with an instance of the execution engine.
 
-As for interfacing with the blockchain, another tool was created called `casper-client`. This tool allows you to query the status of the network like block data, validator information, and global state data. It also allows you to send deploys to the network; these deploys can either come in the form of contract installation, entrypoint invocation, or native functions like transferrals and delegations.
+The next imported crate, `casper_execution_engine`, enables execution of compiled smart contracts within the test framework, effectively preparing a mock VM and simulating what would occur in a live Casper network environment.
 
-Install the `casper-client` by running
+The last import is `casper_types`, which we've used previously and allows us to import datatypes that are used in the smart contract.
 
-```bash
-cargo install casper-client
-```
+Go ahead and delete the existing test functions.
 
-We can use `cargo-casper` to prepare template contracts, and can use `casper-client` to install them, but what about compiling the contracts to the installable format, WebAssembly?
-
-For this you can use `CMake`, a popular build tool. Install it by running
-
-```bash
-sudo apt install cmake
-```
-
-Now that you have all the necessary tools installed, let's get started writing your first smart contract.
-
-Create a new smart contract template by opening a terminal window, navigate to the directory you'd like your project stored ( `cd ~`), and run
-
-```bash
-cargo casper (and the name of your project)
-```
-
-A new contract template will be created in *contract/src/main.rs*. Open this file in an editor of your choice, I'll be using VS Code.
-
-Let's examine this template. As is, this is not a complete smart contract, or even a smart contract at all. What we currently have is known as "session code". Session code can be deployed to the blockchain just like a smart contract can, but it is ephemeral in the sense that, once deployed, there is nothing further a user can interact with. A smart contract, on the other hand, is stored on the blockchain and can be invoked by users at a later time. You'll learn how to construct a full-blown smart contract shortly, but first let's look at what this logic is doing.
-
-On the first two lines, you'll see two Rust attributes, `#![no_std]` and `#![no_main]`. These indicate that the program does not include the Rust standard library and does not have the default entry point `"main"`, respectively. Next, we have what's known as a "configuration predicate", that checks the target compilation architecture and ensures that it's "wasm32". If it's not, the next line is executed, which throws an error notifying the developer to compile targeting the proper architecture for Casper's execution engine.
-
-Next is the importation of dependencies. We start with `extern crate alloc` which imports the `alloc` crate to the project; this is needed because we need to access the `String` class and we're in a `no_std` environment (show that we do this on the next line).
-
-On line 13 the `casper_contract` crate is imported. In the template, the  `runtime` and `storage` modules are imported from the `contract_api` module. These are important modules that consist of supporting functions for interacting with Casper's execution engine. `runtime` contains functions responsible for interacting with transient objects such as caller provided runtime arguments and session data, all of which are relevant only to the session's context. `storage` on the other hand contains functions responsible for accessing and mutating local and global state, such as creating permanent smart contracts on the blockchain and mutating other data like dictionaries and `URef`s.
-
-In addition to the `runtime` and `storage` modules, `casper_contract` also holds the `account` and `system` modules, responsible for managing Casper accounts and interacting with immutable system smart contracts, respectively.
-
-Directly after the importation of the `casper_contract` crate is that of the `casper_types` crate, the other pertinent crate for writing Casper smart contracts. `casper_types` is an extensive crate containing modules, macros, structs, enums, constants, and functions, all related to the datatyping of objects.
-
-Next is the creation of a user error enum. This logic allows the developer to create his or her own errors; useful for debugging. Each error represents a `u16` value, which can be logged to a deploy response in the event of a revert.
-
-Finally, we have the `call` function, which is the function executed upon deployment of the binary to the Casper Network. Before the definition of the function, the `#[no_mangle]` attribute is present. This is necessary so the compiler does not alter the function name in the interest of efficiency. If the `#[no_mangle]` attribute weren't present, the compiler may alter the name making it invisible to the execution engine.
-
-Within the `call` function is where all the necessary setup resides. In the example template, it is first checked if a given key exists in the session, which it should not, as it's not been defined. If logic were prepended that created that key, the call would revert with the error `KeyAlreadyExists`.
-
-Next, a new constant is defined, `value`, that is assigned the `String` value provided as a runtime argument by the deployer, and on the next line, it is stored in a new universal reference, or " `URef`" in global state. If left unchanged, this value will propagate through the blockchains global state forever, always referencable. On the following line, this `URef` is stored under a "named key", which is a unique key associated with a comprehensible string in the caller's account data.
-
-Lastly, it is validated that the named key was stored in the calling account's data; if for whatever reason it wasn't, the value would unwrap to `None` instead of `Some(value)` and execution would be reverted. The stored key is then compared to the initial key constant, and if there is a discrepancy, execution would revert with `KeyMismatch`, however as the code is written, this would never happen.
-
-Now that we've reviewed the template, delete everything within the `call` function as you prepare to write your own smart contract logic.
-
-For today's example, we'll be writing a simple "Counter" smart contract, that will contain a single integer `count`, initially set to zero, and a public entrypoint that allows any account to increment the count.
-
-Start by importing the necessary dependencies:
+Now create a new test function `test_counting` and prefix it with the `#[test]` attribute:
 
 ```rust
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-
-use casper_contract::{
-    contract_api::{runtime, storage},
-    unwrap_or_revert::UnwrapOrRevert,
-};
-use casper_types::{ApiError, Key, URef, CLType, EntryPoint, EntryPoints, EntryPointAccess, EntryPointType, contracts::NamedKeys};
-```
-
-Begin the `call` function by defining the `count` variable and setting it to 0:
-
-```rust
-let count = storage::new_uref(0u32);
-```
-
-The value of this new variable count is referenced by a new `URef`. We need to store this `URef` somewhere so we can later reference the value of `count`. On Casper there is tool for saving these references to objects, known as "Named Keys". Named Keys can be stored under accounts and alongside smart contracts. In this case we want to store them with the smart contract. Create a new `NamedKeys` object and store the "count" `URef` under the key "count_key":
-
-```rust
-let mut named_keys = NamedKeys::new();
-named_keys.insert(String::from("count_key"), count.into());
-```
-
-As mentioned, our smart contract will have one entrypoint that will increment the count, which will appropriately be named `increment_count`. Casper's execution engine expects us to explicitly publicize this entrypoint, which can be done by creating a new `EntryPoints` object, and adding a new entrypoint to it:
-
-```rust
-let mut entry_points = EntryPoints::new();
-
-entry_points.add_entry_point(EntryPoint::new(
-	"increment_count",
-	Vec::new(),
-	CLType::Unit,
-	EntryPointAccess::Public,
-	EntryPointType::Contract,
-));
-```
-
-All that's left in the `call` function is to create a new smart contract in the blockchain's global state, and store a reference to it in the deploying account's named keys.
-
-```rust
-let (contract_hash, contract_version) = storage::new_contract(
-	entry_points,
-	Some(named_keys),
-	Some("counter_package".to_string()),
-	Some("counter_access_uref".to_string()),
-);
-
-runtime::put_key("counter_contract_hash", contract_hash.into());
-```
-
-Now we can write the `increment_count` function. Start by creating a new public, external function `increment_count`, and supply the `#[no_mangle]` attribute just before the function declaration:
-
-```rust
-#[no_mangle]
-pub extern "C" fn increment_count() {
-	
+#[test]
+fn test_counting() {
+  
 }
 ```
 
-Within this function, we need to acquire the `URef` from the contract's named keys, use it to get the `count` value, increment it, and rewrite the new value to the count's `URef`. We can use `runtime::get_key("count_key")` to get the wrapped count key. `get_key` returns an `Option` value, which could result in `None`, so we can unwrap it safely using `unwrap_or_revert`. Once it's unwrapped to a `Key` object, we can convert it into its `URef` representation using `into_uref`, which also returns an option, so it needs to be safely unwrapped as well:
+We need to begin the test by invoking an instance of the execution engine, which we can do by instantiating a new `InMemoryWasmTestBuilder`:
 
 ```rust
-let count_uref: URef = runtime::get_key("count_key")
-	.unwrap_or_revert()
-	.into_uref()
-	.unwrap_or_revert();
+let mut builder = InMemoryWasmTestBuilder::default();
 ```
 
-Now we can use `storage::add` to increment the count by one:
+Now we can initiate the simulated blockchain by running the `.run_genesis` command on the `WasmTestBuilder`:
 
 ```rust
-storage::add(count_uref, 1);
+builder
+	.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+	.commit();
 ```
 
-Congratulations! You've just written and understood the workings of a basic smart contract on the Casper Network. Now let's deploy this smart contract to the blockchain.
+Now we can build an installation deploy, effectively constructing a signed deployment of the counter smart contract:
 
-We can use the `casper-client` command line tool to deploy the Counter contract. Before doing so we need to compile the contract and create or import a funded signing account's private key. We'll deploy the contract on the Casper Testnet, so we can use the testnet's faucet to get free test tokens. Start by using `casper-client` to generate an account keypair:
-
-```bash
-casper-client keygen .
+```rust
+let counter_installation_request = ExecuteRequestBuilder::standard(
+	*DEFAULT_ACCOUNT_ADDR,
+	"contract.wasm",
+	runtime_args! {},
+).build();
 ```
 
-This creates a file *secret_key.pem* containing the private key of a randomly generated account.
+We do this by using the `ExecuteRequestBuilder` module and providing as arguments the `DEFAULT_ACCOUNT_ADDR` which is the default Casper account used for testing, the name of the compiled smart contract binary which you can see under */target/wasm32-unknown-unknown/release/contract.wasm* ***Show this in left side panel***, and an empty runtime arguments object. Don't forget to place an `*` (asterisk) before `DEFAULT_ACCOUNT_ADDR` as we want to dereference it. Then we tag on the `.build()` function at the end to convert the object into an `ExecuteRequest` which is the type it will need to be in to submit it to the mock VM.
 
-From here we can open a Chromium based browser, [install the Casper Wallet](https://chromewebstore.google.com/detail/casper-wallet/abkahkcbhngaebpcgfmhkoioedceoigp), and import the new *secret_key.pem* file. Then you can head to *testnet.cspr.live*, click "More" then "Faucet". Sign in using the Casper Wallet, fill-out the captcha, and click request tokens.
+Now we can use the `WasmTestBuilder` we prepared at the beginning of the test to execute this deployment request:
 
-Once the deployment of test tokens succeed, which should take one block, or about 16 seconds, we can prepare the `casper-client` `put-deploy` command which will send the smart contract to the blockchain.
-
-In order to interface with the blockchain, we need the IP address of a live Casper node, which we can obtain from the *Peers* section on *cspr.live*. Click "More", "Connected Peers", then copy the IP address of one of the nodes.
-
-Now open a terminal first compile the smart contract with:
-
-```bash
-make prepare
-make build-contract
+```rust
+builder
+	.exec(counter_installation_request)
+	.expect_success()
+	.commit();
 ```
 
-then execute `casper-client put-deploy` to deploy the smart contract to the blockchain:
+The `.expect_success()` function expects that the deployment will succeed and will otherwise panic, and the `.commit()` function will commit the deployment to the mock blockchain.
 
-```bash
-casper-client put-deploy \
---node-address http://95.216.1.154:7777/rpc \
---chain-name casper-test \
---secret-key ./secret_key.pem \
---payment-amount 40000000000 \
---session-path ./contract/target/wasm32-unknown-unknown/release/contract.wasm
+Next, we need to obtain the contract hash of the smart contract, just like we do in a real environment:
+
+```rust
+let contract_hash = builder
+	.get_expected_account(*DEFAULT_ACCOUNT_ADDR)
+	.named_keys()
+	.get("counter_contract_hash")
+	.expect("must have contract hash key as part of contract creation")
+	.into_hash()
+	.map(ContractHash::new)
+	.expect("must get contract hash");
 ```
 
-Running this command will output a "deploy hash", which is a reference to the deployment on the blockchain. Copying this hexadecimal string and pasting it into *testnet.cspr.live* will show us the execution results.
+Let's break down all these function calls:
 
-Now that the deployment succeeded, we can visit the deploying account, navigate to its Named Keys, and copy the contract hash. We can also click on the contract hash, view the smart contract's named keys, click on the "count_key" that we defined in the contract, and note that the count is set to 0, as it should be.
+* `get_expected_account` gets the deploying account
+* `named_keys` gets that accounts named keys
+* `get("counter_contract_hash")` gets the contract hash value from the named keys, which as you may remember we added the contract hash to the account's named keys on line 59 in the counter smart contract 
+* `expect` Expects this value to be present, which it will be in this case. Otherwise this function panics and the test fails
+* `into_hash` Converts the named key value into a `Hash` object
+* `map(ContractHash::new)` converts the `Hash` into a `ContractHash` object which is a recognizable Casper type
+* `.expect("must get contract hash");` Expects this all to have worked properly, otherwise panics and the test fails
 
-Going back to the terminal we can prepare an invocation of the `increment_count` entrypoint using the same `casper-client` command line tool. In this case, instead of providing a `--session-path`, we can provide a `--session-hash` with the contract hash we copied a minute ago:
+Now we can officially test the increment entrypoint. To do this we can use the `contract_call_by_hash` function on the `ExecuteRequestBuilder` module to prepare the deployment request:
 
-```bash
-casper-client put-deploy \
---node-address http://95.216.1.154:7777/rpc \
---chain-name casper-test \
---secret-key ./secret_key.pem \
---payment-amount 1000000000 \
---session-hash "" \
---session-entry-point "increment_count"
+```rust
+let increment_request = ExecuteRequestBuilder::contract_call_by_hash(
+	*DEFAULT_ACCOUNT_ADDR,
+	contract_hash,
+	"increment_count",
+	runtime_args! {},
+).build();
 ```
 
-This command will also provide a deploy hash which you can copy and paste into cspr.live to see the results.
+This looks very similar to our installation request that we created a few minutes ago, but with some notable differences. Instead of providing the path to the compiled smart contract, we instead provide the smart contract hash, and the entrypoint we would like to call, which is in this case `"increment_count"`.
 
-Once the calling of the `increment_count` entrypoint has succeeded, we can go to the smart contract's named keys, to the count variable, and discover that the value is now `1`. Every time this entrypoint is invoked, the count will increase.
+Then, just like with installing the contract, we run the `builder.exec` function and expect success:
 
-Now that we've covered the essentials of writing a basic smart contract on the Casper Network, I'd like to open the floor for any questions you may have. Whether it's about the contract we've written today, blockchain specifics, or smart contract development in general, feel welcome to ask.
+```rust
+builder
+	.exec(increment_request)
+	.expect_success()
+	.commit();
+```
+
+Great, we've now completed the first test, which just installs the contract and invokes the `increment_count` entrypoint. We can test this by heading back to the terminal and running `make test`. ***Do this***
+
+You'll see that our test succeeded.
+
+Let's go back to our code and add some logic to the test. We want to assert that the count variable is equal to `1` after we call the entrypoint. Since everytime we run the test, a new instance of the blockchain is spun up, and a new contract is installed, it will always start at `0`, and after the `increment_count` entrypoint is invoked, will be `1`.
+
+First, we need to acquire the `count_key` from the named keys of the smart contract:
+
+```rust
+let count_key = builder
+	.get_contract(contract_hash)
+	.expect("Not able to find contract")
+	.named_keys()
+	.get("count_key")
+	.expect("Unable to find count_key")
+	.clone();
+```
+
+In this command we call `get_contract` on the `WasmTestBuilder`, providing the contract hash we obtained above, then use `expect` to force unwrap the option. Then we get its named keys, and from them the `"count_key"`. We `expect` that this key exists, and finally clone the object, because as it is it is only a reference to the `Key` object.
+
+Now we can get the value from the named key:
+
+```rust
+let count_key_value = builder
+	.query(None, count_key, &[])
+	.expect("should be stored value.")
+	.as_cl_value()
+	.expect("should be cl value.")
+	.clone()
+	.into_t::<u32>()
+	.expect("should be u32.");
+```
+
+Here, the `.query` function queries the value of a `Key`, in our case the `count_key`. The first argument accepts either a post hash, similar to a block hash if you're familiar, or `None`. By putting a post hash here you could get the value at a certain time within the blockchain's history, but for our purposes we just want the current value, so can use `None`. The empty array reference in the last parameter is for the path to the value. Since our value isn't nested in something like a dictionary or mapping, we can leave this blank.
+
+This query returns a `Result`, so we can use `expect` to make sure that it's successful, and panic otherwise. Then we convert this value into a `CLValue`, which is a value implemented by all of the casper types. This again returns an option value, so we can `expect` that it's not `None`. The object returned is a reference to a `CLValue`, so we need to `clone` it. Then we can turn it into a `u32`, which is the type it is in the smart contract, and finally `expect` that that type casting will work properly.
+
+Now that we finally have the count value, we can `assert` that it is equal to `1`:
+
+```rust
+assert_eq!(count_key_value, 1);
+```
+
+And we're done! Save the file and head back to the terminal and re-run `make test`. You should see that the test works properly.
+
+If we go back to our tests and change the value in `assert_eq!` to `2`, save and re-run the test, you'll notice that the test fails as we expect it to, because the value stored in global state is `1` and not `2`.
+
+That's it! Now you know how to write integration tests for Casper smart contracts. This knowledge can be expanded to write more complex tests for more complex contracts, using the same principles.
+
+I'd now like to open the floor for any questions you may have regarding today's lecture, the Casper smart contract testing frameworks, or how this contract interacts with them.
+
