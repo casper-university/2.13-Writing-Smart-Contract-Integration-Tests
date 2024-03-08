@@ -1,6 +1,6 @@
 # Writing Casper Smart Contract Integration Tests
 
-Hi everyone I hope you're all having a good day. Thanks for joining me today as you'll learn to write integration tests to test smart contracts for the Casper Network without having to deploy them to the network itself. The tests that you will write will execute locally in a mock VM that adheres to the same rules that the full-fledged Casper networks do. This way, you can perform tests to ensure expected outcomes without needing to wait for deploys, specific blocks or conditions, and without needing to fund accounts. For today's example, we will use the "counter" smart contract that we built previously. Since we wrote this smart contract three weeks ago we will take a moment to go over the contract before we write the tests, but in essence, all it does is store a number and expose an entrypoint that increments it.
+In today's lecture you'll learn to write integration tests to test smart contracts for the Casper Network without having to deploy them to the network itself. The tests that you will write will execute locally in a mock VM that adheres to the same rules that the full-fledged Casper networks do. This way, you can perform tests to ensure expected outcomes without needing to wait for deploys, specific blocks or conditions, and without needing to fund accounts. For today's example, we will use the "counter" smart contract that we built previously. Since we wrote this smart contract three weeks ago we will take a moment to go over the contract before we write the tests, but in essence, all it does is store a number and expose an entrypoint that increments it.
 
 Begin by opening the counter smart contracts directory in an editor like VS Code. If you don't have the project on standby, you can clone it from its [git repository](https://github.com/casper-university/2.8-Writing-Smart-Contracts-In-Rust).
 
@@ -12,11 +12,11 @@ The `storage::new_contract` function returns the contract hash, which we then st
 
 Now the next function represents the `increment_count` entrypoint. All this function does is acquire the `count` value from the contract's named key `"count_key"`, and directly increment the value by `1`.
 
-Now that we've reviewed the counter contract we can begin writing tests for it. For such a simple smart contract such as this, testing on a testnet or NCTL would not really be a problem, but for more complex contracts, you may want to perform a series of tests that would be impractical to test repeatedly on a live network.
+Now that you've reviewed the counter contract you can begin writing tests for it. For such a simple smart contract such as this, testing on a testnet or NCTL would not really be a problem, but for more complex contracts, you may want to perform a series of tests that would be impractical to test repeatedly on a live network.
 
 In the left side panel you'll notice a directory *tests/*. Expand this folder, then the *src/* folder, and open the *integration_tests.rs* file.
 
-There are a few new concepts and Rust libraries we'll be exploring here, so bear with me.
+There are a few new concepts and Rust libraries we'll be exploring here.
 
 On line 5 you'll see the Rust attribute `#[cfg(test)]`. This is a common attribute in Rust projects, and lets the compiler know that this module should only be compiled and run when we execute `cargo test` in the command line, and not while compiling debug or release versions of the project.
 
@@ -28,7 +28,7 @@ Next, the `casper_engine_test_support` crate is imported. This, alongside the `c
 
 The next imported crate, `casper_execution_engine`, enables execution of compiled smart contracts within the test framework, effectively preparing a mock VM and simulating what would occur in a live Casper network environment.
 
-The last import is `casper_types`, which we've used previously and allows us to import datatypes that are used in the smart contract.
+The last import is `casper_types`, which you've used previously and allows us to import datatypes that are used in the smart contract.
 
 Go ahead and delete the existing test functions.
 
@@ -41,13 +41,13 @@ fn test_counting() {
 }
 ```
 
-We need to begin the test by invoking an instance of the execution engine, which we can do by instantiating a new `InMemoryWasmTestBuilder`:
+We need to begin the test by invoking an instance of the execution engine, which can be done by instantiating a new `InMemoryWasmTestBuilder`:
 
 ```rust
 let mut builder = InMemoryWasmTestBuilder::default();
 ```
 
-Now we can initiate the simulated blockchain by running the `.run_genesis` command on the `WasmTestBuilder`:
+Now initiate the simulated blockchain by running the `.run_genesis` command on the `WasmTestBuilder`:
 
 ```rust
 builder
@@ -65,9 +65,9 @@ let counter_installation_request = ExecuteRequestBuilder::standard(
 ).build();
 ```
 
-We do this by using the `ExecuteRequestBuilder` module and providing as arguments the `DEFAULT_ACCOUNT_ADDR` which is the default Casper account used for testing, the name of the compiled smart contract binary which you can see under */target/wasm32-unknown-unknown/release/contract.wasm* ***Show this in left side panel***, and an empty runtime arguments object. Don't forget to place an `*` (asterisk) before `DEFAULT_ACCOUNT_ADDR` as we want to dereference it. Then we tag on the `.build()` function at the end to convert the object into an `ExecuteRequest` which is the type it will need to be in to submit it to the mock VM.
+This is done by using the `ExecuteRequestBuilder` module and providing as arguments the `DEFAULT_ACCOUNT_ADDR` which is the default Casper account used for testing, the name of the compiled smart contract binary which you can see under */target/wasm32-unknown-unknown/release/contract.wasm*, and an empty runtime arguments object. Don't forget to place an `*`  before `DEFAULT_ACCOUNT_ADDR` as we want to dereference it. Then tag on the `.build()` function at the end to convert the object into an `ExecuteRequest` which is the type it will need to be in to submit it to the mock VM.
 
-Now we can use the `WasmTestBuilder` we prepared at the beginning of the test to execute this deployment request:
+Now you can use the `WasmTestBuilder` you prepared at the beginning of the test to execute this deployment request:
 
 ```rust
 builder
@@ -78,7 +78,7 @@ builder
 
 The `.expect_success()` function expects that the deployment will succeed and will otherwise panic, and the `.commit()` function will commit the deployment to the mock blockchain.
 
-Next, we need to obtain the contract hash of the smart contract, just like we do in a real environment:
+Next, you need to obtain the contract hash of the smart contract, just like is done in a real environment:
 
 ```rust
 let contract_hash = builder
@@ -101,7 +101,7 @@ Let's break down all these function calls:
 * `map(ContractHash::new)` converts the `Hash` into a `ContractHash` object which is a recognizable Casper type
 * `.expect("must get contract hash");` Expects this all to have worked properly, otherwise panics and the test fails
 
-Now we can officially test the increment entrypoint. To do this we can use the `contract_call_by_hash` function on the `ExecuteRequestBuilder` module to prepare the deployment request:
+Now you can officially test the increment entrypoint. To do this, use the `contract_call_by_hash` function on the `ExecuteRequestBuilder` module to prepare the deployment request:
 
 ```rust
 let increment_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -112,7 +112,7 @@ let increment_request = ExecuteRequestBuilder::contract_call_by_hash(
 ).build();
 ```
 
-This looks very similar to our installation request that we created a few minutes ago, but with some notable differences. Instead of providing the path to the compiled smart contract, we instead provide the smart contract hash, and the entrypoint we would like to call, which is in this case `"increment_count"`.
+This looks very similar to the installation request that we created a few minutes ago, but with some notable differences. Instead of providing the path to the compiled smart contract, we instead provide the smart contract hash, and the entrypoint we would like to call, which is in this case `"increment_count"`.
 
 Then, just like with installing the contract, we run the `builder.exec` function and expect success:
 
@@ -123,13 +123,13 @@ builder
 	.commit();
 ```
 
-Great, we've now completed the first test, which just installs the contract and invokes the `increment_count` entrypoint. We can test this by heading back to the terminal and running `make test`. ***Do this***
+Great, the first test is now complete, which just installs the contract and invokes the `increment_count` entrypoint. We can test this by heading back to the terminal and running `make test`.
 
 You'll see that our test succeeded.
 
 Let's go back to our code and add some logic to the test. We want to assert that the count variable is equal to `1` after we call the entrypoint. Since everytime we run the test, a new instance of the blockchain is spun up, and a new contract is installed, it will always start at `0`, and after the `increment_count` entrypoint is invoked, will be `1`.
 
-First, we need to acquire the `count_key` from the named keys of the smart contract:
+First, you'll need to acquire the `count_key` from the named keys of the smart contract:
 
 ```rust
 let count_key = builder
@@ -160,7 +160,7 @@ Here, the `.query` function queries the value of a `Key`, in our case the `count
 
 This query returns a `Result`, so we can use `expect` to make sure that it's successful, and panic otherwise. Then we convert this value into a `CLValue`, which is a value implemented by all of the casper types. This again returns an option value, so we can `expect` that it's not `None`. The object returned is a reference to a `CLValue`, so we need to `clone` it. Then we can turn it into a `u32`, which is the type it is in the smart contract, and finally `expect` that that type casting will work properly.
 
-Now that we finally have the count value, we can `assert` that it is equal to `1`:
+Now that you finally have the count value, we can `assert` that it is equal to `1`:
 
 ```rust
 assert_eq!(count_key_value, 1);
@@ -171,6 +171,3 @@ And we're done! Save the file and head back to the terminal and re-run `make tes
 If we go back to our tests and change the value in `assert_eq!` to `2`, save and re-run the test, you'll notice that the test fails as we expect it to, because the value stored in global state is `1` and not `2`.
 
 That's it! Now you know how to write integration tests for Casper smart contracts. This knowledge can be expanded to write more complex tests for more complex contracts, using the same principles.
-
-I'd now like to open the floor for any questions you may have regarding today's lecture, the Casper smart contract testing frameworks, or how this contract interacts with them.
-
