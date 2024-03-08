@@ -18,11 +18,11 @@ In the left side panel you'll notice a directory *tests/*. Expand this folder, t
 
 There are a few new concepts and Rust libraries we'll be exploring here, so bear with me.
 
-On line 1 you'll see the Rust attribute `#[cfg(test)]`. This is a common attribute in Rust projects, and lets the compiler know that this module should only be compiled and run when we execute `cargo test` in the command line, and not while compiling debug or release versions of the project.
+On line 5 you'll see the Rust attribute `#[cfg(test)]`. This is a common attribute in Rust projects, and lets the compiler know that this module should only be compiled and run when we execute `cargo test` in the command line, and not while compiling debug or release versions of the project.
 
-On line 2 a new module `tests` is defined. This is the module that the `#[cfg(test)]` attribute acts on. Everything within this module is related to our tests.
+On line 6 a new module `tests` is defined. This is the module that the `#[cfg(test)]` attribute acts on. Everything within this module is related to our tests.
 
-Line 3 contains an import of the `PathBuf` module, which we'll use to import the compiled WebAssembly smart contract from our local directory.
+Line 7 contains an import of the `PathBuf` module, which we'll use to import the compiled WebAssembly smart contract from our local directory.
 
 Next, the `casper_engine_test_support` crate is imported. This, alongside the `casper_execution_engine` crate that we'll look at next, is an important create in testing Casper smart contracts. This crate provides an interface to write tests and interact with an instance of the execution engine.
 
